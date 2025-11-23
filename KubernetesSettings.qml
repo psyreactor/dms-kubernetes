@@ -9,7 +9,7 @@ PluginSettings {
 
     StyledText {
         width: parent.width
-        text: "Configuración Kubernetes"
+        text: "Kubernetes config"
         font.pixelSize: Theme.fontSizeLarge
         font.weight: Font.Bold
         color: Theme.surfaceText
@@ -17,7 +17,7 @@ PluginSettings {
 
     StyledText {
         width: parent.width
-        text: "Configura el path del kubeconfig y el intervalo de actualización."
+        text: "Configure the kubeconfig path and refresh interval."
         font.pixelSize: Theme.fontSizeSmall
         color: Theme.surfaceVariantText
         wrapMode: Text.WordWrap
@@ -26,7 +26,7 @@ PluginSettings {
     StringSetting {
         settingKey: "kubeconfigPath"
         label: "Kubeconfig Path"
-        description: "Path al archivo de configuración de Kubernetes"
+        description: "Path to the Kubernetes configuration file"
         defaultValue: "~/.kube/config"
         placeholder: "~/.kube/config"
     }
@@ -34,11 +34,11 @@ PluginSettings {
     SliderSetting {
         settingKey: "refreshInterval"
         label: "Refresh Interval"
-        description: "Intervalo de actualización del contexto (en segundos)."
-        defaultValue: 300
-        minimum: 30
+        description: "Context refresh interval (in seconds)."
+        defaultValue: 15
+        minimum: 10
         maximum: 600
-        unit: "seg"
+        unit: "sec"
         leftIcon: "schedule"
     }
 }
