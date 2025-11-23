@@ -1,0 +1,18 @@
+{
+    "id": "kubernetesPlugin",
+    "name": "Kubernetes",
+    "description": "Display the current Kubernetes context from kubectl with configurable refresh interval.",
+    "version": "1.0.0",
+    "author": "Lucas Mariani",
+    "type": "widget",
+    "capabilities": [
+        "dankbar-widget"
+    ],
+    "component": "./KubernetesWidget.qml",
+    "icon": "anchor",
+    "settings": "./KubernetesSettings.qml",
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}
