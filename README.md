@@ -15,7 +15,7 @@ A plugin that displays the current Kubernetes context in the DMS bar with the ab
 
 ```bash
 mkdir -p ~/.config/DankMaterialShell/plugins/
-cp -r kubernetes ~/.config/DankMaterialShell/plugins/
+git clone https://github.com/psyreactor/dms-kubernetes.git kubernetes
 ```
 
 ## Usage
