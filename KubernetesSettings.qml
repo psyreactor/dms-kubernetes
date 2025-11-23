@@ -5,7 +5,7 @@ import qs.Modules.Plugins
 
 PluginSettings {
     id: root
-    pluginId: "kubernetesPlugin"
+    pluginId: "kubernetes"
 
     StyledText {
         width: parent.width
