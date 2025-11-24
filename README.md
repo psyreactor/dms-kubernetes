@@ -2,6 +2,8 @@
 
 A plugin that displays the current Kubernetes context in the DMS bar with the ability to switch between contexts.
 
+![Screenshot](./screenshot.png)
+
 ## Features
 
 - **Display current kubectl context** in the DankBar
