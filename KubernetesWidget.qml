@@ -82,7 +82,11 @@ PluginComponent {
             }
             
             StyledText {
-                text: root.loading ? "..." : (root.hasError ? "Error" : root.currentContext)
+                text: root.hasError
+                      ? "Error"
+                      : (root.currentContext !== "..." && root.currentContext.length > 0
+                          ? root.currentContext
+                          : "...")
                 color: root.hasError ? Theme.error : Theme.surfaceText
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -101,7 +105,11 @@ PluginComponent {
             }
             
             StyledText {
-                text: root.loading ? "..." : (root.hasError ? "Err" : root.currentContext)
+                text: root.hasError
+                      ? "Error"
+                      : (root.currentContext !== "..." && root.currentContext.length > 0
+                          ? root.currentContext
+                          : "...")
                 color: root.hasError ? Theme.error : Theme.surfaceText
                 anchors.horizontalCenter: parent.horizontalCenter
                 font.pixelSize: Theme.fontSizeSmall
@@ -134,12 +142,14 @@ PluginComponent {
 
     popoutContent: Component {
         Column {
+            id: popoutColumn
             anchors.fill: parent
             anchors.margins: Theme.spacingL
             spacing: Theme.spacingM
             
             // Header
             Row {
+                id: headerRow
                 width: parent.width
                 spacing: Theme.spacingM
                 
@@ -161,15 +171,20 @@ PluginComponent {
                     }
                     
                     StyledText {
-                        text: root.loading ? "Loading..." : "Current: " + root.currentContext
+                        text: root.hasError
+                              ? "Error"
+                              : (root.currentContext !== "..." && root.currentContext.length > 0
+                                  ? "Current: " + root.currentContext
+                                  : "Loading current context...")
                         font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.surfaceVariantText
+                        color: root.hasError ? Theme.error : Theme.surfaceVariantText
                     }
                 }
             }
             
             // Error message
             StyledRect {
+                id: errorRect
                 width: parent.width
                 height: 60
                 radius: Theme.cornerRadius
@@ -186,6 +201,7 @@ PluginComponent {
             
             // Contexts list header
             StyledText {
+                id: headerText
                 text: "Available Contexts (" + root.availableContexts.length + ")"
                 font.pixelSize: Theme.fontSizeMedium
                 font.weight: Font.Medium
@@ -196,7 +212,16 @@ PluginComponent {
             // Scrollable contexts list
             Item {
                 width: parent.width
-                height: Math.max(200, parent.height - y)
+                height: {
+                    var availableHeight = root.popoutHeight - (Theme.spacingL * 2) - headerRow.height - Theme.spacingM
+                    if (errorRect.visible)
+                        availableHeight -= errorRect.height + Theme.spacingM
+                    if (headerText.visible)
+                        availableHeight -= headerText.height + Theme.spacingM
+                    if (root.loading)
+                        availableHeight -= 60 + Theme.spacingM
+                    return Math.max(200, availableHeight)
+                }
                 visible: !root.hasError && !root.loading && root.availableContexts.length > 0
                 
                 StyledRect {
