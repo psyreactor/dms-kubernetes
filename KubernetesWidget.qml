@@ -144,7 +144,7 @@ PluginComponent {
         Column {
             id: popoutColumn
             anchors.fill: parent
-            anchors.margins: Theme.spacingL
+            anchors.margins: Theme.spacingXS
             spacing: Theme.spacingM
             
             // Header
@@ -248,7 +248,7 @@ PluginComponent {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                
+                                hoverEnabled: true
                                 onClicked: {
                                     if (modelData !== root.currentContext) {
                                         root.switchContext(modelData)
@@ -266,7 +266,7 @@ PluginComponent {
                                 DankIcon {
                                     name: modelData === root.currentContext ? "check_circle" : "radio_button_unchecked"
                                     size: 20
-                                    color: modelData === root.currentContext ? "#000000" : Theme.surfaceVariantText
+                                    color: Theme.surfaceVariantText
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                                 
@@ -274,7 +274,7 @@ PluginComponent {
                                     text: modelData
                                     font.pixelSize: Theme.fontSizeMedium
                                     font.weight: modelData === root.currentContext ? Font.Bold : Font.Normal
-                                    color: modelData === root.currentContext ? "#000000" : Theme.surfaceText
+                                    color: Theme.surfaceText
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                             }

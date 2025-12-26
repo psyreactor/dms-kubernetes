@@ -2,7 +2,7 @@
     "id": "kubernetes",
     "name": "Kubernetes",
     "description": "Display the current Kubernetes context from kubectl with configurable refresh interval.",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "Lucas Mariani",
     "type": "widget",
     "capabilities": [
