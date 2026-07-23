@@ -41,4 +41,11 @@ PluginSettings {
         unit: "sec"
         leftIcon: "schedule"
     }
+
+    ToggleSetting {
+        settingKey: "hideContextName"
+        label: "Hide cluster name"
+        description: "Show only the icon in the bar and reveal the context name on hover."
+        defaultValue: false
+    }
 }

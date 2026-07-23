@@ -19,6 +19,48 @@ PluginComponent {
     // Settings
     property string kubeconfigPath: pluginData.kubeconfigPath || "~/.kube/config"
     property int refreshInterval: pluginData.refreshInterval || 300
+    property bool hideContextName: pluginData.hideContextName || false
+    property bool popoutOpen: false
+
+    readonly property string displayContext: root.hasError
+        ? "Error"
+        : (root.currentContext !== "..." && root.currentContext.length > 0 ? root.currentContext : "...")
+
+    // Extra top gap for vertical bars that don't span the full screen height.
+    readonly property real minTooltipY: (root.isVertical && root.parentScreen && root.parentScreen.y > 0)
+        ? (root.barThickness + root.barSpacing) : 0
+
+    // Bar tooltip via DankTooltip (own overlay PanelWindow, positioned outside the bar strip in
+    // screen coordinates) so it never overlaps the pill — mirrors the native Vpn/DiskUsage widgets.
+    function showBarTooltip(loader, anchorItem) {
+        if (!root.parentScreen || root.popoutOpen)
+            return
+        loader.active = true
+        if (!loader.item)
+            return
+        const scr = root.parentScreen
+        const text = root.displayContext
+        if (root.isVertical) {
+            const p = anchorItem.mapToItem(null, anchorItem.width / 2, anchorItem.height / 2)
+            const isLeft = root.axis?.edge === "left"
+            const x = isLeft ? (root.barThickness + root.barSpacing + Theme.spacingXS)
+                             : (scr.width - root.barThickness - root.barSpacing - Theme.spacingXS)
+            loader.item.show(text, x, p.y + root.minTooltipY, scr, isLeft, !isLeft)
+        } else {
+            const isBottom = root.axis?.edge === "bottom"
+            const p = anchorItem.mapToItem(null, anchorItem.width / 2, 0)
+            const th = Theme.fontSizeSmall * 1.5 + Theme.spacingS * 2
+            const y = isBottom ? (scr.height - root.barThickness - root.barSpacing - Theme.spacingXS - th)
+                               : (root.barThickness + root.barSpacing + Theme.spacingXS)
+            loader.item.show(text, p.x, y, scr, false, false)
+        }
+    }
+
+    function hideBarTooltip(loader) {
+        if (loader.item)
+            loader.item.hide()
+        loader.active = false
+    }
 
     Timer {
         interval: root.refreshInterval * 1000
@@ -73,20 +115,33 @@ PluginComponent {
     horizontalBarPill: Component {
         Row {
             spacing: Theme.spacingXS
-            
-            DankIcon {
-                name: root.hasError ? "error" : "anchor"
+
+            DankSVGIcon {
+                id: pillIcon
+                source: Qt.resolvedUrl("kubernetes.svg")
                 size: Theme.iconSize - 4
-                color: root.hasError ? Theme.error : Theme.surfaceText
+                colorOverride: root.hasError ? Theme.error : (Theme.widgetIconColor || Theme.surfaceText)
                 anchors.verticalCenter: parent.verticalCenter
+
+                property bool wantTooltip: iconHover.hovered && root.hideContextName && !root.popoutOpen
+                onWantTooltipChanged: wantTooltip
+                    ? root.showBarTooltip(tooltipLoader, pillIcon)
+                    : root.hideBarTooltip(tooltipLoader)
+
+                HoverHandler {
+                    id: iconHover
+                }
+
+                Loader {
+                    id: tooltipLoader
+                    active: false
+                    sourceComponent: DankTooltip {}
+                }
             }
-            
+
             StyledText {
-                text: root.hasError
-                      ? "Error"
-                      : (root.currentContext !== "..." && root.currentContext.length > 0
-                          ? root.currentContext
-                          : "...")
+                visible: !root.hideContextName
+                text: root.displayContext
                 color: root.hasError ? Theme.error : Theme.surfaceText
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -96,225 +151,372 @@ PluginComponent {
     verticalBarPill: Component {
         Column {
             spacing: 2
-            
-            DankIcon {
-                name: root.hasError ? "error" : "anchor"
+
+            DankSVGIcon {
+                id: pillIconVertical
+                source: Qt.resolvedUrl("kubernetes.svg")
                 size: 24
-                color: root.hasError ? Theme.error : Theme.surfaceText
+                colorOverride: root.hasError ? Theme.error : (Theme.widgetIconColor || Theme.surfaceText)
                 anchors.horizontalCenter: parent.horizontalCenter
-            }
-            
-            StyledText {
-                text: root.hasError
-                      ? "Error"
-                      : (root.currentContext !== "..." && root.currentContext.length > 0
-                          ? root.currentContext
-                          : "...")
-                color: root.hasError ? Theme.error : Theme.surfaceText
-                anchors.horizontalCenter: parent.horizontalCenter
-                font.pixelSize: Theme.fontSizeSmall
+
+                // Vertical bar never renders the context name (looks bad); reveal it on hover only.
+                property bool wantTooltip: iconHoverVertical.hovered && !root.popoutOpen
+                onWantTooltipChanged: wantTooltip
+                    ? root.showBarTooltip(tooltipLoaderVertical, pillIconVertical)
+                    : root.hideBarTooltip(tooltipLoaderVertical)
+
+                HoverHandler {
+                    id: iconHoverVertical
+                }
+
+                Loader {
+                    id: tooltipLoaderVertical
+                    active: false
+                    sourceComponent: DankTooltip {}
+                }
             }
         }
     }
 
-    component InfoRow: Row {
-        property string label
-        property string value
-        
-        spacing: Theme.spacingM
-        width: parent.width
-        
-        StyledText {
-            text: label
-            font.pixelSize: Theme.fontSizeMedium
-            font.weight: Font.Medium
-            color: Theme.surfaceVariantText
-            width: 100
+    component ContextItem: Item {
+        property string contextName: ""
+        readonly property bool isCurrent: contextName === root.currentContext
+
+        width: ListView.view.width
+        height: 40
+
+        scale: itemArea.pressed ? 0.98 : 1.0
+        Behavior on scale { NumberAnimation { duration: 100 } }
+
+        MouseArea {
+            id: itemArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onPressed: mouse => itemRipple.trigger(mouse.x, mouse.y)
+            onClicked: {
+                if (!isCurrent) {
+                    root.switchContext(contextName)
+                    root.closePopout()
+                }
+            }
         }
-        
-        StyledText {
-            text: value
-            font.pixelSize: Theme.fontSizeMedium
-            color: Theme.surfaceText
-            font.family: "monospace"
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2
+            radius: Theme.cornerRadius
+            color: isCurrent
+                   ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                   : (itemArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent")
+            border.width: isCurrent ? 1 : 0
+            border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
+        }
+
+        DankRipple { id: itemRipple; rippleColor: Theme.primary; cornerRadius: Theme.cornerRadius }
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacingM
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.spacingM
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.spacingS
+
+            DankIcon {
+                name: isCurrent ? "check_circle" : "radio_button_unchecked"
+                size: 18
+                color: isCurrent ? Theme.primary : Theme.surfaceVariantText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            StyledText {
+                width: parent.width - 30
+                text: contextName
+                font.pixelSize: Theme.fontSizeSmall
+                font.weight: isCurrent ? Font.Bold : Font.Normal
+                color: Theme.surfaceText
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 
     popoutContent: Component {
         Column {
             id: popoutColumn
-            anchors.fill: parent
-            anchors.margins: Theme.spacingXS
+            width: parent.width
             spacing: Theme.spacingM
-            
-            // Header
-            Row {
-                id: headerRow
-                width: parent.width
-                spacing: Theme.spacingM
-                
-                DankIcon {
-                    name: "anchor"
-                    size: 32
-                    color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
+            topPadding: Theme.spacingM
+            bottomPadding: Theme.spacingM
+
+            // Injected by PluginPopout; used to hide the bar tooltip while the popout is open.
+            property var parentPopout: null
+            onParentPopoutChanged: if (parentPopout) root.popoutOpen = parentPopout.shouldBeVisible
+
+            Connections {
+                target: popoutColumn.parentPopout
+                ignoreUnknownSignals: true
+                function onShouldBeVisibleChanged() {
+                    root.popoutOpen = popoutColumn.parentPopout.shouldBeVisible
                 }
-                
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-                    
-                    StyledText {
-                        text: "Kubernetes Contexts"
-                        font.bold: true
-                        font.pixelSize: Theme.fontSizeLarge
+            }
+
+            Component.onDestruction: root.popoutOpen = false
+
+            // Header card
+            Item {
+                id: headerCard
+                width: parent.width
+                height: 68
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.cornerRadius * 1.5
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) }
+                        GradientStop { position: 1.0; color: Qt.rgba(Theme.secondary.r, Theme.secondary.g, Theme.secondary.b, 0.08) }
                     }
-                    
-                    StyledText {
-                        text: root.hasError
-                              ? "Error"
-                              : (root.currentContext !== "..." && root.currentContext.length > 0
-                                  ? "Current: " + root.currentContext
-                                  : "Loading current context...")
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: root.hasError ? Theme.error : Theme.surfaceVariantText
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                }
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.spacingM
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacingM
+
+                    DankSVGIcon {
+                        source: Qt.resolvedUrl("kubernetes.svg")
+                        size: 32
+                        colorOverride: root.hasError ? Theme.error : Theme.primary
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        width: headerCard.width - 32 - 38 - Theme.spacingM * 4
+
+                        StyledText {
+                            width: parent.width
+                            text: "Kubernetes"
+                            font.bold: true
+                            font.pixelSize: Theme.fontSizeLarge
+                            color: Theme.surfaceText
+                            elide: Text.ElideRight
+                        }
+
+                        StyledText {
+                            width: parent.width
+                            text: root.hasError
+                                  ? "Error"
+                                  : (root.currentContext !== "..." && root.currentContext.length > 0
+                                      ? "Current: " + root.currentContext
+                                      : "Loading current context...")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: root.hasError ? Theme.error : Theme.surfaceVariantText
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                // Translucent refresh button
+                Item {
+                    width: 38
+                    height: 38
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.spacingM
+                    anchors.verticalCenter: parent.verticalCenter
+                    scale: refreshArea.pressed ? 0.9 : (refreshArea.containsMouse ? 1.1 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+
+                    MouseArea {
+                        id: refreshArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onPressed: mouse => refreshRipple.trigger(mouse.x, mouse.y)
+                        onClicked: root.fetchKubeContext()
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.cornerRadius
+                        color: refreshArea.containsMouse
+                               ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                               : Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.4)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, refreshArea.containsMouse ? 0.3 : 0.15)
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
+                    }
+
+                    DankIcon {
+                        id: refreshIcon
+                        name: "refresh"
+                        size: 20
+                        color: Theme.primary
+                        anchors.centerIn: parent
+
+                        RotationAnimation on rotation {
+                            from: 0
+                            to: 360
+                            duration: 1000
+                            loops: Animation.Infinite
+                            running: root.loading
+                        }
+                    }
+
+                    DankRipple {
+                        id: refreshRipple
+                        rippleColor: Theme.surfaceText
+                        cornerRadius: Theme.cornerRadius
+                        anchors.fill: parent
                     }
                 }
             }
-            
-            // Error message
+
+            // Error card
             StyledRect {
-                id: errorRect
                 width: parent.width
-                height: 60
+                height: root.hasError ? 60 : 0
                 radius: Theme.cornerRadius
                 color: Theme.errorContainer
                 visible: root.hasError
-                
+
                 StyledText {
                     anchors.centerIn: parent
+                    width: parent.width - Theme.spacingL * 2
                     text: root.errorMessage
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
                     color: Theme.onErrorContainer
-                    font.pixelSize: Theme.fontSizeMedium
+                    font.pixelSize: Theme.fontSizeSmall
                 }
             }
-            
-            // Contexts list header
-            StyledText {
-                id: headerText
-                text: "Available Contexts (" + root.availableContexts.length + ")"
-                font.pixelSize: Theme.fontSizeMedium
-                font.weight: Font.Medium
-                color: Theme.surfaceText
-                visible: !root.hasError && !root.loading && root.availableContexts.length > 0
-            }
-            
-            // Scrollable contexts list
+
+            // Contexts section header
             Item {
                 width: parent.width
-                height: {
-                    var availableHeight = root.popoutHeight - (Theme.spacingL * 2) - headerRow.height - Theme.spacingM
-                    if (errorRect.visible)
-                        availableHeight -= errorRect.height + Theme.spacingM
-                    if (headerText.visible)
-                        availableHeight -= headerText.height + Theme.spacingM
-                    if (root.loading)
-                        availableHeight -= 60 + Theme.spacingM
-                    return Math.max(200, availableHeight)
-                }
-                visible: !root.hasError && !root.loading && root.availableContexts.length > 0
-                
-                StyledRect {
-                    anchors.fill: parent
-                    radius: Theme.cornerRadius
-                    color: Theme.surfaceContainer
-                    
-                    ListView {
-                        id: contextListView
-                        anchors.fill: parent
-                        anchors.margins: Theme.spacingS
-                        clip: true
-                        model: root.availableContexts
-                        spacing: Theme.spacingXS
-                        
-                        delegate: StyledRect {
-                            width: ListView.view.width
-                            height: 40
-                            radius: Theme.cornerRadius
-                            color: modelData === root.currentContext ? Theme.primaryContainer : Theme.surfaceContainerHigh
-                            border.width: modelData === root.currentContext ? 2 : 0
-                            border.color: Theme.primary
-                            
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                hoverEnabled: true
-                                onClicked: {
-                                    if (modelData !== root.currentContext) {
-                                        root.switchContext(modelData)
-                                        root.closePopout()
-                                    }
-                                }
-                            }
-                            
-                            Row {
-                                anchors.left: parent.left
-                                anchors.leftMargin: Theme.spacingM
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: Theme.spacingS
-                                
-                                DankIcon {
-                                    name: modelData === root.currentContext ? "check_circle" : "radio_button_unchecked"
-                                    size: 20
-                                    color: Theme.surfaceVariantText
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                                
-                                StyledText {
-                                    text: modelData
-                                    font.pixelSize: Theme.fontSizeMedium
-                                    font.weight: modelData === root.currentContext ? Font.Bold : Font.Normal
-                                    color: Theme.surfaceText
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                            }
+                height: 32
+                visible: !root.hasError
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacingS
+
+                    Rectangle {
+                        width: 4
+                        height: 22
+                        radius: 2
+                        color: Theme.primary
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    DankIcon {
+                        name: "lan"
+                        size: 20
+                        color: Theme.primary
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    StyledText {
+                        text: "Contexts"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Bold
+                        color: Theme.surfaceText
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Rectangle {
+                        width: countBadge.width + 14
+                        height: 20
+                        radius: 10
+                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        StyledText {
+                            id: countBadge
+                            text: root.availableContexts.length.toString()
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.weight: Font.Bold
+                            color: Theme.primary
+                            anchors.centerIn: parent
                         }
                     }
                 }
             }
-            
-            // Loading indicator
-            Item {
+
+            // Contexts list container
+            StyledRect {
                 width: parent.width
-                height: 60
-                visible: root.loading
-                
-                Rectangle {
-                    id: spinner
-                    width: 24
-                    height: 24
-                    radius: 12
-                    color: "transparent"
-                    border.width: 3
-                    border.color: Theme.surfaceVariantText
+                height: root.loading
+                        ? 54
+                        : (root.availableContexts.length > 0
+                            ? Math.min(root.availableContexts.length * 40 + (root.availableContexts.length - 1) * 6 + 28, 360)
+                            : 54)
+                radius: Theme.cornerRadius * 1.5
+                color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.5)
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                visible: !root.hasError
+                clip: true
+
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+
+                // Loading state
+                Row {
                     anchors.centerIn: parent
-                    
-                    Rectangle {
-                        width: 6
-                        height: 6
-                        radius: 3
-                        color: Theme.surfaceVariantText
-                        anchors.top: parent.top
-                        anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: Theme.spacingS
+                    visible: root.loading
+
+                    DankIcon {
+                        name: "sync"
+                        size: 16
+                        color: Theme.primary
+                        anchors.verticalCenter: parent.verticalCenter
+                        RotationAnimation on rotation {
+                            from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: parent.visible
+                        }
                     }
-                    
-                    RotationAnimation {
-                        target: spinner
-                        from: 0
-                        to: 360
-                        duration: 1000
-                        loops: Animation.Infinite
-                        running: root.loading
+                    StyledText {
+                        text: "Loading contexts..."
+                        color: Theme.surfaceVariantText
+                        font.pixelSize: Theme.fontSizeSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Empty state
+                Row {
+                    anchors.centerIn: parent
+                    spacing: Theme.spacingS
+                    visible: !root.loading && root.availableContexts.length === 0
+
+                    DankIcon { name: "info"; size: 16; color: Theme.secondary; anchors.verticalCenter: parent.verticalCenter }
+                    StyledText {
+                        text: "No contexts found"
+                        color: Theme.surfaceVariantText
+                        font.pixelSize: Theme.fontSizeSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                ListView {
+                    anchors.fill: parent
+                    anchors.topMargin: 14
+                    anchors.bottomMargin: 14
+                    anchors.leftMargin: Theme.spacingS
+                    anchors.rightMargin: Theme.spacingS
+                    spacing: 6
+                    model: root.availableContexts
+                    clip: true
+                    visible: !root.loading && root.availableContexts.length > 0
+                    delegate: ContextItem {
+                        contextName: modelData
                     }
                 }
             }
@@ -322,5 +524,5 @@ PluginComponent {
     }
 
     popoutWidth: 450
-    popoutHeight: 500
+    popoutHeight: 0
 }

@@ -12,6 +12,7 @@ A plugin that displays the current Kubernetes context in the DMS bar with the ab
 - **Custom kubeconfig path** support (default: ~/.kube/config)
 - **Auto-close popup** after context selection
 - **Visual indicators** for active context
+- **Compact mode**: hide the context name and reveal it in a tooltip on hover
 
 ## Installation
 
@@ -34,11 +35,12 @@ git clone https://github.com/psyreactor/dms-kubernetes.git kubernetes
 
 - **Kubeconfig Path**: Path to your Kubernetes config file (default: `~/.kube/config`)
 - **Refresh Interval**: How often to refresh the current context in seconds (default: 300, range: 30-600)
+- **Hide cluster name**: Show only the icon in the bar and reveal the context name in a tooltip on hover (default: off)
 
 ### Widget Display
 
 The widget shows:
-- **Bar**: Anchor icon ⚓ + current context name
+- **Bar**: Kubernetes logo + current context name
 - **Popup**: List of all available contexts with the ability to switch by clicking
 
 ## Files
