@@ -13,6 +13,10 @@ PluginComponent {
     property string currentContext: "..."
     property var availableContexts: []
     property bool loading: true
+    // Bumped on every fetchKubeContext() so callbacks from an abandoned cycle
+    // (watchdog timeout, overlapping refresh) can be discarded instead of
+    // completing it.
+    property int refreshEpoch: 0
     property bool hasError: false
     property string errorMessage: ""
     
@@ -70,44 +74,77 @@ PluginComponent {
         onTriggered: fetchKubeContext()
     }
 
+    // If a Proc callback never fires, `loading` would latch true forever and the
+    // popout would spin on "Loading contexts..." for the rest of the session.
+    // 30s is above the worst legitimate case: currentContext and allContexts are
+    // chained and carry a 10s Proc timeout each.
+    Timer {
+        id: loadingWatchdog
+        interval: 30000
+        repeat: false
+        running: root.loading
+        onTriggered: {
+            root.refreshEpoch++
+            root.loading = false
+            root.hasError = true
+            root.errorMessage = "Timed out talking to kubectl. Will retry."
+        }
+    }
+
+    // Proc.runCommand() is a singleton that keeps one entry per id and reads
+    // entry.callback at completion time, so two widget instances (one per
+    // bar/monitor) sharing an id clobber each other and only the last one
+    // registered ever fires. A null id makes Proc mint a private id per call and
+    // drop the entry once it completes.
+
     function fetchKubeContext() {
         root.loading = true
+        const gen = ++root.refreshEpoch
         const expandedPath = root.kubeconfigPath.replace(/^~/, Quickshell.env("HOME"))
-        
-        Proc.runCommand("kubernetes.currentContext", ["kubectl", "--kubeconfig", expandedPath, "config", "current-context"], (stdout, exitCode) => {
+
+        Proc.runCommand(null, ["kubectl", "--kubeconfig", expandedPath, "config", "current-context"], (stdout, exitCode) => {
+            if (gen !== root.refreshEpoch)
+                return
+
             if (exitCode === 0) {
                 root.currentContext = stdout.trim()
                 root.hasError = false
-                fetchAllContexts()
+                fetchAllContexts(gen)
             } else {
                 root.hasError = true
                 root.errorMessage = "Error: kubectl not found or invalid config"
                 root.currentContext = "N/A"
             }
             root.loading = false
-        }, 100)
+        }, 0, 10000)
     }
 
-    function fetchAllContexts() {
+    function fetchAllContexts(gen) {
         const expandedPath = root.kubeconfigPath.replace(/^~/, Quickshell.env("HOME"))
-        
-        Proc.runCommand("kubernetes.allContexts", ["kubectl", "--kubeconfig", expandedPath, "config", "get-contexts", "-o", "name"], (stdout, exitCode) => {
+
+        Proc.runCommand(null, ["kubectl", "--kubeconfig", expandedPath, "config", "get-contexts", "-o", "name"], (stdout, exitCode) => {
+            if (gen !== root.refreshEpoch)
+                return
+
             if (exitCode === 0) {
                 root.availableContexts = stdout.trim().split("\n").filter(ctx => ctx.length > 0)
             } else {
                 root.availableContexts = []
             }
-        }, 100)
+        }, 0, 10000)
     }
 
+    // No epoch guard here: this is a user action, not part of a refresh cycle,
+    // and fetchKubeContext() bumps the epoch, so any generation captured here
+    // would read as stale by the time the callback lands.
     function switchContext(contextName) {
         const expandedPath = root.kubeconfigPath.replace(/^~/, Quickshell.env("HOME"))
-        
-        Proc.runCommand("kubernetes.switchContext", ["kubectl", "--kubeconfig", expandedPath, "config", "use-context", contextName], (stdout, exitCode) => {
+
+        Proc.runCommand(null, ["kubectl", "--kubeconfig", expandedPath, "config", "use-context", contextName], (stdout, exitCode) => {
             if (exitCode === 0) {
                 fetchKubeContext()
             }
-        }, 100)
+        }, 0, 10000)
     }
 
 
