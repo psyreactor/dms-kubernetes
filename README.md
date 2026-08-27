@@ -8,6 +8,7 @@ A plugin that displays the current Kubernetes context in the DMS bar with the ab
 
 - **Display current kubectl context** in the DankBar
 - **Quick context switching** via popup menu
+- **Context filter** appears automatically past 8 contexts: type to narrow the list, <kbd>Enter</kbd> switches to the first match, <kbd>Esc</kbd> clears the filter and then closes the popup
 - **Configurable refresh interval** (default: 300 seconds)
 - **Custom kubeconfig path** support (default: ~/.kube/config)
 - **Auto-close popup** after context selection
