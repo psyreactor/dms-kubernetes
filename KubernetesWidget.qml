@@ -134,24 +134,12 @@ PluginComponent {
     // registered ever fires. A null id makes Proc mint a private id per call and
     // drop the entry once it completes.
 
-    // EKS ARNs carry the useful bits: arn:aws:eks:<region>:<account>:cluster/<name>.
-    // Anything else falls back to the raw cluster string.
-    function shortCluster(cluster) {
-        if (!cluster)
-            return ""
-        const m = cluster.match(/^arn:aws:eks:([^:]+):[^:]*:cluster\/(.+)$/)
-        return m ? (m[1] + " \u00b7 " + m[2]) : cluster
-    }
-
     function parseKubeConfig(stdout) {
         try {
             const data = JSON.parse(stdout)
             return {
                 current: data["current-context"] || "",
-                contexts: (data.contexts || []).map(c => ({
-                    name: c.name,
-                    subtitle: root.shortCluster(c.context ? c.context.cluster : "")
-                }))
+                contexts: (data.contexts || []).map(c => c.name)
             }
         } catch (e) {
             return null
@@ -169,8 +157,8 @@ PluginComponent {
     }
 
     // One `config view` replaces the old current-context + get-contexts pair: it
-    // carries the active context and every context's cluster in a single call,
-    // so `loading` now covers the whole fetch instead of clearing halfway.
+    // carries the active context and the full context list in a single call, so
+    // `loading` now covers the whole fetch instead of clearing halfway.
     function fetchKubeContext() {
         root.loading = true
         const gen = ++root.refreshEpoch
@@ -296,15 +284,14 @@ PluginComponent {
         required property int index
         property int total: 0
 
-        readonly property string contextName: modelData ? modelData.name : ""
-        readonly property string contextSubtitle: modelData ? (modelData.subtitle || "") : ""
+        readonly property string contextName: modelData || ""
         readonly property bool isCurrent: contextName === root.currentContext
         readonly property bool isHovered: ctxMa.containsMouse
         readonly property bool isFirst: index === 0
         readonly property bool isLast: index === ctxRow.total - 1
 
         width: parent ? parent.width : 0
-        height: Math.max(56, ctxLayout.implicitHeight + Theme.spacingS * 2)
+        height: Math.max(44, ctxLayout.implicitHeight + Theme.spacingS * 2)
 
         Shape {
             id: ctxBg
@@ -369,29 +356,14 @@ PluginComponent {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            ColumnLayout {
+            StyledText {
+                text: ctxRow.contextName
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: ctxRow.isCurrent ? Font.Bold : Font.Medium
+                color: Theme.surfaceText
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 2
-
-                StyledText {
-                    text: ctxRow.contextName
-                    font.pixelSize: Theme.fontSizeMedium
-                    font.weight: ctxRow.isCurrent ? Font.Bold : Font.Medium
-                    color: Theme.surfaceText
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                }
-
-                StyledText {
-                    text: ctxRow.contextSubtitle
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: ctxRow.isHovered ? Theme.primary : Theme.surfaceVariantText
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                    visible: ctxRow.contextSubtitle.length > 0
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                }
+                elide: Text.ElideRight
             }
 
             DankIcon {
@@ -436,7 +408,7 @@ PluginComponent {
                 const q = popoutRoot.searchQuery.trim().toLowerCase()
                 if (!q)
                     return root.availableContexts
-                return root.availableContexts.filter(c => c.name.toLowerCase().includes(q))
+                return root.availableContexts.filter(c => c.toLowerCase().includes(q))
             }
 
             // Injected by PluginPopout; used to hide the bar tooltip while the popout is open.
@@ -663,8 +635,8 @@ PluginComponent {
 
                                 onAccepted: {
                                     const hits = popoutRoot.filteredContexts
-                                    if (hits.length > 0 && hits[0].name !== root.currentContext)
-                                        root.switchContext(hits[0].name)
+                                    if (hits.length > 0 && hits[0] !== root.currentContext)
+                                        root.switchContext(hits[0])
                                     root.closePopout()
                                 }
 
@@ -746,7 +718,7 @@ PluginComponent {
                             // The list itself, scrollable past four contexts
                             Item {
                                 width: parent.width
-                                height: popoutRoot.filteredContexts.length > 4 ? 244 : ctxColumn.implicitHeight
+                                height: popoutRoot.filteredContexts.length > 5 ? 236 : ctxColumn.implicitHeight
                                 visible: !root.loading && popoutRoot.filteredContexts.length > 0
 
                                 ScrollView {
@@ -757,7 +729,7 @@ PluginComponent {
                                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                                     ScrollBar.vertical: ScrollBar {
                                         id: ctxScrollBar
-                                        policy: popoutRoot.filteredContexts.length > 4 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                                        policy: popoutRoot.filteredContexts.length > 5 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                                         active: true
                                         width: 6
 
