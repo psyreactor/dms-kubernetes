@@ -19,7 +19,11 @@ PluginComponent {
     property int refreshEpoch: 0
     property bool hasError: false
     property string errorMessage: ""
-    
+
+    // Above this many contexts the popout grows a filter field. Below it the
+    // list is short enough to scan, and the field would be pure chrome.
+    readonly property int searchThreshold: 8
+
     // Settings
     property string kubeconfigPath: pluginData.kubeconfigPath || "~/.kube/config"
     property int refreshInterval: pluginData.refreshInterval || 300
@@ -287,6 +291,20 @@ PluginComponent {
             topPadding: Theme.spacingM
             bottomPadding: Theme.spacingM
 
+            // The filter lives here rather than on root: this Component is
+            // rebuilt on every open, so the query starts empty each time
+            // instead of silently carrying over a filter you forgot about.
+            property string searchQuery: ""
+
+            readonly property bool showSearch: root.availableContexts.length > root.searchThreshold
+
+            readonly property var filteredContexts: {
+                const q = popoutColumn.searchQuery.trim().toLowerCase()
+                if (!q)
+                    return root.availableContexts
+                return root.availableContexts.filter(c => c.toLowerCase().includes(q))
+            }
+
             // Injected by PluginPopout; used to hide the bar tooltip while the popout is open.
             property var parentPopout: null
             onParentPopoutChanged: if (parentPopout) root.popoutOpen = parentPopout.shouldBeVisible
@@ -487,13 +505,53 @@ PluginComponent {
                 }
             }
 
+            // Context filter. Only worth its chrome once the list stops fitting
+            // on screen, so it stays out of the way for small kubeconfigs.
+            DankTextField {
+                id: searchField
+                width: parent.width
+                height: 44
+                visible: popoutColumn.showSearch && !root.loading && !root.hasError
+                leftIconName: "search"
+                leftIconSize: Theme.iconSize
+                leftIconColor: Theme.surfaceVariantText
+                leftIconFocusedColor: Theme.primary
+                showClearButton: true
+                textColor: Theme.surfaceText
+                font.pixelSize: Theme.fontSizeSmall
+                placeholderText: "Filter contexts..."
+                focus: visible
+
+                onVisibleChanged: if (visible) Qt.callLater(() => searchField.forceActiveFocus())
+                Component.onCompleted: if (visible) Qt.callLater(() => searchField.forceActiveFocus())
+
+                onTextEdited: popoutColumn.searchQuery = text
+
+                onAccepted: {
+                    const hits = popoutColumn.filteredContexts
+                    if (hits.length > 0 && hits[0] !== root.currentContext)
+                        root.switchContext(hits[0])
+                    root.closePopout()
+                }
+
+                // Escape clears the filter first; once it is empty the event is
+                // left unaccepted so PluginPopout's own handler closes the popout.
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Escape && text.length > 0) {
+                        text = ""
+                        popoutColumn.searchQuery = ""
+                        event.accepted = true
+                    }
+                }
+            }
+
             // Contexts list container
             StyledRect {
                 width: parent.width
                 height: root.loading
                         ? 54
-                        : (root.availableContexts.length > 0
-                            ? Math.min(root.availableContexts.length * 40 + (root.availableContexts.length - 1) * 6 + 28, 360)
+                        : (popoutColumn.filteredContexts.length > 0
+                            ? Math.min(popoutColumn.filteredContexts.length * 40 + (popoutColumn.filteredContexts.length - 1) * 6 + 28, 360)
                             : 54)
                 radius: Theme.cornerRadius * 1.5
                 color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.5)
@@ -527,15 +585,18 @@ PluginComponent {
                     }
                 }
 
-                // Empty state
+                // Empty state. Distinguishes an empty kubeconfig from a filter
+                // that simply matched nothing.
                 Row {
                     anchors.centerIn: parent
                     spacing: Theme.spacingS
-                    visible: !root.loading && root.availableContexts.length === 0
+                    visible: !root.loading && popoutColumn.filteredContexts.length === 0
 
                     DankIcon { name: "info"; size: 16; color: Theme.secondary; anchors.verticalCenter: parent.verticalCenter }
                     StyledText {
-                        text: "No contexts found"
+                        text: popoutColumn.searchQuery.trim().length > 0
+                              ? "No contexts match"
+                              : "No contexts found"
                         color: Theme.surfaceVariantText
                         font.pixelSize: Theme.fontSizeSmall
                         anchors.verticalCenter: parent.verticalCenter
@@ -549,9 +610,9 @@ PluginComponent {
                     anchors.leftMargin: Theme.spacingS
                     anchors.rightMargin: Theme.spacingS
                     spacing: 6
-                    model: root.availableContexts
+                    model: popoutColumn.filteredContexts
                     clip: true
-                    visible: !root.loading && root.availableContexts.length > 0
+                    visible: !root.loading && popoutColumn.filteredContexts.length > 0
                     delegate: ContextItem {
                         contextName: modelData
                     }
