@@ -34,7 +34,7 @@ PluginComponent {
 
     // Settings
     property string kubeconfigPath: pluginData.kubeconfigPath || "~/.kube/config"
-    property int refreshInterval: pluginData.refreshInterval || 300
+    property int refreshInterval: pluginData.refreshInterval || 15
     property bool hideContextName: pluginData.hideContextName || false
     property string timeFormat: pluginData.timeFormat || "system"
     property bool popoutOpen: false
