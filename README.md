@@ -8,8 +8,18 @@ A plugin that displays the current Kubernetes context in the DMS bar with the ab
 
 - **Display current kubectl context** in the DankBar
 - **Quick context switching** via popup menu
-- **Context filter** appears automatically past 8 contexts: type to narrow the list, <kbd>Enter</kbd> switches to the first match, <kbd>Esc</kbd> clears the filter and then closes the popup
-- **Configurable refresh interval** (default: 300 seconds)
+- **Opens on the active context**: the list is scrolled to whichever context is
+  current, rather than starting at the top
+- **Context filter** appears automatically past 8 contexts. It takes keyboard
+  focus when the popup opens, so you can type straight away:
+  <kbd>Enter</kbd> switches to the first match, <kbd>Esc</kbd> clears the filter
+  and then closes the popup
+- **Scrollable list** with its own scrollbar past five contexts
+- **Header card** showing the active context, the number of contexts and when
+  they were last read
+- **Manual refresh** with a spinner that tracks the actual `kubectl` call, and a
+  toast when it completes
+- **Configurable refresh interval**
 - **Custom kubeconfig path** support (default: ~/.kube/config)
 - **Auto-close popup** after context selection
 - **Visual indicators** for active context
@@ -35,14 +45,19 @@ git clone https://github.com/psyreactor/dms-kubernetes.git kubernetes
 ### Settings
 
 - **Kubeconfig Path**: Path to your Kubernetes config file (default: `~/.kube/config`)
-- **Refresh Interval**: How often to refresh the current context in seconds (default: 300, range: 30-600)
+- **Refresh Interval**: How often to re-read the kubeconfig, in seconds (range: 10-600, default: 15)
 - **Hide cluster name**: Show only the icon in the bar and reveal the context name in a tooltip on hover (default: off)
+- **Time Format**: How the last-updated time is rendered in the popup header —
+  system default, 12-hour or 24-hour (default: system)
 
 ### Widget Display
 
 The widget shows:
-- **Bar**: Kubernetes logo + current context name
-- **Popup**: List of all available contexts with the ability to switch by clicking
+- **Bar**: Kubernetes logo + current context name. On a vertical bar only the
+  logo is drawn, with the context name on hover.
+- **Popup**: a header card with the active context, the context count and the
+  last-updated time, then the list of available contexts. Clicking one switches
+  to it and closes the popup; the active one is marked and not clickable.
 
 ## Files
 
@@ -65,8 +80,11 @@ This plugin requires:
 ## How It Works
 
 The plugin uses `kubectl` commands to:
-1. Get the current context: `kubectl config current-context`
-2. List all contexts: `kubectl config get-contexts -o name`
-3. Switch contexts: `kubectl config use-context <context-name>`
+1. Read the active context and the full context list in one call:
+   `kubectl config view -o json`
+2. Switch contexts: `kubectl config use-context <context-name>`
 
 All commands respect the configured kubeconfig path.
+
+Nothing is read from the clusters themselves — only the kubeconfig file — so the
+widget works whether or not the clusters are reachable.
