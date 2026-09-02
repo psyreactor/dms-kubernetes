@@ -411,8 +411,9 @@ PluginComponent {
                 return root.availableContexts.filter(c => c.toLowerCase().includes(q))
             }
 
-            // Injected by PluginPopout; used to hide the bar tooltip while the popout is open.
-            property var parentPopout: null
+            // parentPopout is injected by PluginPopout and already declared by
+            // PopoutComponent; redeclaring it here would only shadow the base
+            // property. Used to hide the bar tooltip while the popout is open.
             onParentPopoutChanged: if (parentPopout) root.popoutOpen = parentPopout.shouldBeVisible
 
             Connections {
@@ -420,8 +421,56 @@ PluginComponent {
                 ignoreUnknownSignals: true
                 function onShouldBeVisibleChanged() {
                     root.popoutOpen = popoutRoot.parentPopout.shouldBeVisible
+                    if (root.popoutOpen) {
+                        focusGrabber.restart()
+                        scrollToCurrentTimer.restart()
+                    }
                 }
             }
+
+            // The popout is a layer-shell surface, so the compositor grants it
+            // keyboard focus asynchronously. When that lands, Qt routes active
+            // focus to PluginPopout's container, which declares focus: true —
+            // after any grab a plugin can schedule. Racing it does not work, so
+            // the field takes focus back when it notices it lost it (see
+            // onFocusStateChanged below). This timer only defers the grab out
+            // of the signal handler.
+            Timer {
+                id: focusGrabber
+                interval: 0
+                repeat: false
+                onTriggered: if (searchField.visible) searchField.forceActiveFocus()
+            }
+
+            // Brings the active context into view. The rows live in a Repeater
+            // inside a Column, not a ListView, so there is no
+            // positionViewAtIndex — the offset is computed from the fixed row
+            // height and the Column spacing.
+            function scrollToCurrent() {
+                const idx = popoutRoot.filteredContexts.indexOf(root.currentContext)
+                if (idx < 0)
+                    return
+
+                const flick = ctxScrollView.contentItem
+                if (!flick || flick.height <= 0)
+                    return
+
+                const rowStride = 44 + 4
+                const centred = idx * rowStride - (flick.height - rowStride) / 2
+                const maxY = Math.max(0, flick.contentHeight - flick.height)
+                flick.contentY = Math.max(0, Math.min(centred, maxY))
+            }
+
+            // Deferred so the Repeater has laid the rows out before the offset
+            // is computed.
+            Timer {
+                id: scrollToCurrentTimer
+                interval: 16
+                repeat: false
+                onTriggered: popoutRoot.scrollToCurrent()
+            }
+
+            Component.onCompleted: scrollToCurrentTimer.restart()
 
             Component.onDestruction: root.popoutOpen = false
 
@@ -628,8 +677,26 @@ PluginComponent {
                                 placeholderText: "Filter contexts..."
                                 focus: visible
 
-                                onVisibleChanged: if (visible) Qt.callLater(() => searchField.forceActiveFocus())
-                                Component.onCompleted: if (visible) Qt.callLater(() => searchField.forceActiveFocus())
+                                // Bounded so a competitor that never yields cannot spin.
+                                property int refocusAttempts: 0
+
+                                onVisibleChanged: if (visible) focusGrabber.restart()
+                                Component.onCompleted: if (visible) focusGrabber.restart()
+
+                                // DankTextField emits this from its inner TextInput, which is
+                                // where focus actually lives. Same self-healing approach the
+                                // lock screen uses to hold focus on its password field.
+                                onFocusStateChanged: hasFocus => {
+                                    if (hasFocus) {
+                                        searchField.refocusAttempts = 0
+                                        return
+                                    }
+                                    if (searchField.visible && root.popoutOpen
+                                        && searchField.refocusAttempts < 10) {
+                                        searchField.refocusAttempts++
+                                        focusGrabber.restart()
+                                    }
+                                }
 
                                 onTextEdited: popoutRoot.searchQuery = text
 
