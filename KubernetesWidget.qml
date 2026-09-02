@@ -411,8 +411,9 @@ PluginComponent {
                 return root.availableContexts.filter(c => c.toLowerCase().includes(q))
             }
 
-            // Injected by PluginPopout; used to hide the bar tooltip while the popout is open.
-            property var parentPopout: null
+            // parentPopout is injected by PluginPopout and already declared by
+            // PopoutComponent; redeclaring it here would only shadow the base
+            // property. Used to hide the bar tooltip while the popout is open.
             onParentPopoutChanged: if (parentPopout) root.popoutOpen = parentPopout.shouldBeVisible
 
             Connections {
@@ -420,7 +421,22 @@ PluginComponent {
                 ignoreUnknownSignals: true
                 function onShouldBeVisibleChanged() {
                     root.popoutOpen = popoutRoot.parentPopout.shouldBeVisible
+                    if (root.popoutOpen)
+                        focusGrabber.restart()
                 }
+            }
+
+            // PluginPopout's container grabs focus for itself through a
+            // Qt.callLater when the popout shows. Those callbacks all flush at
+            // the end of the current event loop pass, in queueing order, so
+            // asking for focus the same way was a race the container usually
+            // won. A zero-interval Timer fires on the next tick — strictly
+            // after that flush — which makes this deterministic.
+            Timer {
+                id: focusGrabber
+                interval: 0
+                repeat: false
+                onTriggered: if (searchField.visible) searchField.forceActiveFocus()
             }
 
             Component.onDestruction: root.popoutOpen = false
@@ -628,8 +644,8 @@ PluginComponent {
                                 placeholderText: "Filter contexts..."
                                 focus: visible
 
-                                onVisibleChanged: if (visible) Qt.callLater(() => searchField.forceActiveFocus())
-                                Component.onCompleted: if (visible) Qt.callLater(() => searchField.forceActiveFocus())
+                                onVisibleChanged: if (visible) focusGrabber.restart()
+                                Component.onCompleted: if (visible) focusGrabber.restart()
 
                                 onTextEdited: popoutRoot.searchQuery = text
 
