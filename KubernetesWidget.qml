@@ -382,12 +382,10 @@ PluginComponent {
             hoverEnabled: true
             cursorShape: ctxRow.isCurrent ? Qt.ArrowCursor : Qt.PointingHandCursor
             onPressed: m => ctxRipple.trigger(m.x, m.y)
-            onClicked: {
-                if (!ctxRow.isCurrent) {
-                    root.switchContext(ctxRow.contextName)
-                    root.closePopout()
-                }
-            }
+            // Does not close the popout: the filter clearing and the scroll to
+            // the new context are handled where currentContext changes, once
+            // the switch has actually taken effect.
+            onClicked: if (!ctxRow.isCurrent) root.switchContext(ctxRow.contextName)
         }
     }
 
@@ -421,8 +419,10 @@ PluginComponent {
                 ignoreUnknownSignals: true
                 function onShouldBeVisibleChanged() {
                     root.popoutOpen = popoutRoot.parentPopout.shouldBeVisible
-                    if (root.popoutOpen)
+                    if (root.popoutOpen) {
                         focusGrabber.restart()
+                        scrollToCurrentTimer.restart()
+                    }
                 }
             }
 
@@ -439,6 +439,56 @@ PluginComponent {
                 repeat: false
                 onTriggered: if (searchField.visible) searchField.forceActiveFocus()
             }
+
+            // Brings the active context into view. The rows live in a Repeater
+            // inside a Column, not a ListView, so there is no
+            // positionViewAtIndex — the offset is computed from the fixed row
+            // height and the Column spacing.
+            function scrollToCurrent() {
+                const idx = popoutRoot.filteredContexts.indexOf(root.currentContext)
+                if (idx < 0)
+                    return
+
+                const flick = ctxScrollView.contentItem
+                if (!flick || flick.height <= 0)
+                    return
+
+                const rowStride = 44 + 4
+                const centred = idx * rowStride - (flick.height - rowStride) / 2
+                const maxY = Math.max(0, flick.contentHeight - flick.height)
+                flick.contentY = Math.max(0, Math.min(centred, maxY))
+            }
+
+            // Deferred: switching context triggers a refresh, so the list is
+            // torn down and rebuilt before there is anything to scroll to.
+            Timer {
+                id: scrollToCurrentTimer
+                interval: 16
+                repeat: false
+                onTriggered: popoutRoot.scrollToCurrent()
+            }
+
+            Connections {
+                target: root
+
+                // Picking a context clears the filter, so the full list comes
+                // back — scrolled to what was just selected rather than jumping
+                // to the top.
+                function onCurrentContextChanged() {
+                    searchField.text = ""
+                    popoutRoot.searchQuery = ""
+                    scrollToCurrentTimer.restart()
+                }
+
+                // The list is hidden while loading, so a scroll issued during a
+                // refresh would be a no-op. Retry once it is back.
+                function onLoadingChanged() {
+                    if (!root.loading)
+                        scrollToCurrentTimer.restart()
+                }
+            }
+
+            Component.onCompleted: scrollToCurrentTimer.restart()
 
             Component.onDestruction: root.popoutOpen = false
 
@@ -672,7 +722,6 @@ PluginComponent {
                                     const hits = popoutRoot.filteredContexts
                                     if (hits.length > 0 && hits[0] !== root.currentContext)
                                         root.switchContext(hits[0])
-                                    root.closePopout()
                                 }
 
                                 // Escape clears the filter first; once it is empty the event
