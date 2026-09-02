@@ -165,7 +165,7 @@ PluginComponent {
         const expandedPath = root.kubeconfigPath.replace(/^~/, Quickshell.env("HOME"))
 
         Proc.runCommand(null, ["kubectl", "--kubeconfig", expandedPath, "config", "view", "-o", "json"], (stdout, exitCode) => {
-            if (gen !== root.refreshEpoch)
+            if (!root || gen !== root.refreshEpoch)
                 return
 
             const parsed = exitCode === 0 ? root.parseKubeConfig(stdout) : null
@@ -191,6 +191,9 @@ PluginComponent {
         const expandedPath = root.kubeconfigPath.replace(/^~/, Quickshell.env("HOME"))
 
         Proc.runCommand(null, ["kubectl", "--kubeconfig", expandedPath, "config", "use-context", contextName], (stdout, exitCode) => {
+            if (!root)
+                return
+
             if (exitCode === 0) {
                 fetchKubeContext()
             }
