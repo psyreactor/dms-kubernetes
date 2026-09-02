@@ -426,12 +426,13 @@ PluginComponent {
                 }
             }
 
-            // PluginPopout's container grabs focus for itself through a
-            // Qt.callLater when the popout shows. Those callbacks all flush at
-            // the end of the current event loop pass, in queueing order, so
-            // asking for focus the same way was a race the container usually
-            // won. A zero-interval Timer fires on the next tick — strictly
-            // after that flush — which makes this deterministic.
+            // The popout is a layer-shell surface, so the compositor grants it
+            // keyboard focus asynchronously. When that lands, Qt routes active
+            // focus to PluginPopout's container, which declares focus: true —
+            // after any grab a plugin can schedule. Racing it does not work, so
+            // the field takes focus back when it notices it lost it (see
+            // onFocusStateChanged below). This timer only defers the grab out
+            // of the signal handler.
             Timer {
                 id: focusGrabber
                 interval: 0
@@ -644,8 +645,26 @@ PluginComponent {
                                 placeholderText: "Filter contexts..."
                                 focus: visible
 
+                                // Bounded so a competitor that never yields cannot spin.
+                                property int refocusAttempts: 0
+
                                 onVisibleChanged: if (visible) focusGrabber.restart()
                                 Component.onCompleted: if (visible) focusGrabber.restart()
+
+                                // DankTextField emits this from its inner TextInput, which is
+                                // where focus actually lives. Same self-healing approach the
+                                // lock screen uses to hold focus on its password field.
+                                onFocusStateChanged: hasFocus => {
+                                    if (hasFocus) {
+                                        searchField.refocusAttempts = 0
+                                        return
+                                    }
+                                    if (searchField.visible && root.popoutOpen
+                                        && searchField.refocusAttempts < 10) {
+                                        searchField.refocusAttempts++
+                                        focusGrabber.restart()
+                                    }
+                                }
 
                                 onTextEdited: popoutRoot.searchQuery = text
 
