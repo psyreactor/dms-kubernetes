@@ -88,3 +88,8 @@ All commands respect the configured kubeconfig path.
 
 Nothing is read from the clusters themselves — only the kubeconfig file — so the
 widget works whether or not the clusters are reachable.
+
+Each widget instance owns its commands: with the widget on more than one bar, or
+on more than one monitor, the instances query independently and never share a
+result. Work still in flight when a bar is reconfigured or the plugin is
+reloaded is discarded rather than applied to a torn-down widget.
